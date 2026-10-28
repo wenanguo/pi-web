@@ -18,6 +18,26 @@ Markdown 提交上去就行。
 
 ---
 
+## 仓库里现成的例子
+
+| 文件 | 是什么 |
+| --- | --- |
+| `custom-agent/agents/risk-officer.md` | **项目风控官**：只读审计、产出分级风险清单的完整角色（定级标准、固定卡片格式、硬规矩）。 |
+| `custom-agent/extensions/risk-scanner/index.ts` | 配套能力：`risk_scan` 工具，扫硬编码凭据、未锁定依赖版本、遗留调试语句、TODO/FIXME、大文件。 |
+| `custom-agent/agents/example-analyst.md` | 最小人格模板：frontmatter + 一段做事方式。 |
+
+`risk_scan` 的参数：
+
+| 参数 | 含义 |
+| --- | --- |
+| `root` | 扫描根目录，相对会话的工作目录。默认当前目录。 |
+| `kinds` | 只扫哪几类：`secret` / `dependency` / `debug` / `todo` / `large`。默认全扫。 |
+
+风控官的人格要求**按用户问的范围选 `kinds`**：问依赖版本就只传 `["dependency"]`，
+这样扫描结果不会把其它类型的噪音一起端上来。
+
+---
+
 ## 写一个角色
 
 `custom-agent/agents/reviewer.md`：

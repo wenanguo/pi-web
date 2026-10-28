@@ -10,6 +10,15 @@
 
 写法和用法见 [docs/custom-agents.md](../docs/custom-agents.md)。
 
+## 仓库里现成的两个例子
+
+- `agents/risk-officer.md` —— **项目风控官**：只读审计项目，产出 P0/P1/P2 分级风险清单。
+- `extensions/risk-scanner/` —— 配套能力 `risk_scan`：扫硬编码凭据、未锁定依赖版本、
+  遗留调试语句、TODO/FIXME、大文件，只读不改。
+- `agents/example-analyst.md` —— 最小人格模板。
+
+照着 `risk-officer.md` 改，比从空白开始快。
+
 ## 三条约定
 
 1. **人格追加，不替换。** 角色的正文加在 pi 自己的系统提示词之后，pi 的工具规则和技能目录
