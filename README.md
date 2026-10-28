@@ -214,6 +214,15 @@ The session keeps its agent, so a session that is opened later is still the same
 See [Custom agents](./docs/custom-agents.md) for the definition format, how to write a
 capability extension, and the `PI_WEB_CUSTOM_AGENT_DIR` setting.
 
+## Projects panel (this fork)
+
+The right panel's first tab shows **the projects you have, their milestones and the tasks
+under them**. The projects are the ones the sidebar knows (a directory you ran a session
+in), the plan is edited in place, and it is saved in `pi-web-projects.json` beside pi's
+own files — a project directory is never written to.
+
+See [Projects panel](./docs/projects.md) for the fields, the storage and the API.
+
 See [AGENTS.md](./AGENTS.md) for the architecture notes and detailed file map.
 
 ## License

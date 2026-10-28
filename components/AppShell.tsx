@@ -9,6 +9,7 @@ import { NewSessionContextBar, type NewSessionContextControl } from "./NewSessio
 import type { ChatScrollPosition } from "@/lib/chat-scroll-position";
 import { FileViewer } from "./FileViewer";
 import { TabBar, type Tab } from "./TabBar";
+import { ProjectsPanel } from "./ProjectsPanel";
 import { openFileTab, saveFileViewerState, saveParkedFileViewerState, switchFileWorkspace, type ParkedFileWorkspace } from "./file-tab-state";
 import { SettingsPanel, SettingsSectionIcon } from "./SettingsPanel";
 import { ProjectTrustDialog, type ProjectTrustFailure } from "./ProjectTrustDialog";
@@ -85,6 +86,8 @@ type AutoNameStatus =
 
 const TOP_BAR_ICON_BUTTON_SIZE = 36;
 const AGENT_PANEL_WIDTH = 420;
+/** The right panel's tab that shows the projects, their milestones and their tasks. */
+const PROJECTS_TAB_ID = "projects";
 // pi's built-in tools that never change a file; any other tool may (#1144).
 const READ_ONLY_TOOL_NAMES = new Set(PRESET_READ_ONLY);
 const TOOL_END_REFRESH_MS = 1000;
@@ -538,6 +541,13 @@ export function AppShell() {
   // they are dropped when the project changes (they belong to its sessions).
   const [agentTabs, setAgentTabs] = useState<{ sessionId: string; label: string }[]>([]);
   const panelTabs: Tab[] = [
+    {
+      id: PROJECTS_TAB_ID,
+      label: translate("projects.tab"),
+      filePath: "",
+      kind: "projects" as const,
+      closable: false,
+    },
     ...fileTabs,
     ...terminalTabs.map((tab) => ({
       id: tab.id,
@@ -1250,6 +1260,7 @@ export function AppShell() {
   };
 
   const handleCloseFileTab = useCallback((tabId: string) => {
+    if (tabId === PROJECTS_TAB_ID) return;
     if (terminalTabs.some((tab) => tab.id === tabId)) {
       setTerminalTabs((tabs) => tabs.map((tab) => tab.id === tabId && !tab.closing ? { ...tab, closing: "close" } : tab));
       return;
@@ -2737,7 +2748,9 @@ export function AppShell() {
 
         {/* Only the active viewer is mounted. Lightweight per-tab state is restored on activation. */}
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", paddingBottom: "env(safe-area-inset-bottom)" }}>
-          {activeFileTab?.filePath ? (
+          {activeFileTabId === PROJECTS_TAB_ID ? (
+            <ProjectsPanel initialCwd={activeCwd} />
+          ) : activeFileTab?.filePath ? (
             <FileViewer
               key={`${fileWorkspaceGeneration}:${activeFileTab.id}:${activeFileTab.viewerRevision ?? 0}`}
               filePath={activeFileTab.filePath}
