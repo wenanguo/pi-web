@@ -4,6 +4,7 @@ import { existsSync } from "fs";
 import { randomUUID } from "crypto";
 import { allowFileRoot } from "@/lib/file-access";
 import { invalidateSessionListCache } from "@/lib/session-reader";
+import { resolveCustomAgent } from "@/lib/custom-agents";
 import { startRpcSession } from "@/lib/rpc-manager";
 
 const THINKING_LEVELS = new Set<ThinkingLevel>(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
@@ -45,11 +46,30 @@ export async function POST(req: Request) {
     }
 
     // Use a one-time key so startRpcSession's lock doesn't conflict with real session ids
-    const { provider, modelId, toolNames, thinkingLevel, ...promptCommand } = command as { provider?: string; modelId?: string; toolNames?: string[]; thinkingLevel?: unknown; [key: string]: unknown };
+    const { provider, modelId, toolNames, thinkingLevel, customAgent, ...promptCommand } = command as { provider?: string; modelId?: string; toolNames?: string[]; thinkingLevel?: unknown; customAgent?: unknown; [key: string]: unknown };
     if ((provider && !modelId) || (!provider && modelId)) {
       throw new Error("provider and modelId must be provided together");
     }
     const explicitThinkingLevel = parseThinkingLevel(thinkingLevel);
+
+    // The custom agent the new session runs as: its persona, its tools, and the
+    // model and reasoning level it starts on unless the browser picked its own.
+    const customAgentId = typeof customAgent === "string" ? customAgent.trim() : "";
+    const customAgentDefinition = customAgentId ? resolveCustomAgent(customAgentId) : undefined;
+    if (customAgentId && !customAgentDefinition) {
+      return NextResponse.json({
+        error: `Unknown custom agent: ${customAgentId}`,
+        ...(commandType === "prompt"
+          ? { code: "prompt_rejected", accepted: false }
+          : {}),
+      }, { status: 400 });
+    }
+    const browserModel = provider && modelId ? { provider, modelId } : undefined;
+    const agentModel = customAgentDefinition?.model?.provider
+      ? customAgentDefinition.model
+      : undefined;
+    const initialModel = browserModel ?? agentModel;
+    const sessionThinkingLevel = explicitThinkingLevel ?? customAgentDefinition?.thinkingLevel;
 
     // Must be unique per request: startRpcSession coalesces concurrent callers
     // that share a key onto one session. Date.now() (ms resolution) collides for
@@ -57,8 +77,12 @@ export async function POST(req: Request) {
     const tempKey = `__new__${randomUUID()}`;
     const { session, realSessionId } = await startRpcSession(tempKey, "", cwd, {
       ...(toolNames ? { toolNames } : {}),
-      ...(provider && modelId ? { initialModel: { provider, modelId } } : {}),
-      ...(explicitThinkingLevel ? { thinkingLevel: explicitThinkingLevel } : {}),
+      ...(initialModel ? { initialModel } : {}),
+      // A model the agent names is a default, not a demand: the session falls back
+      // to another model in scope when that one is not available.
+      ...(agentModel && !browserModel ? { allowInitialModelFallback: true } : {}),
+      ...(sessionThinkingLevel ? { thinkingLevel: sessionThinkingLevel } : {}),
+      ...(customAgentDefinition ? { customAgent: customAgentDefinition.id } : {}),
     });
 
     // Keep the files-route allowed-roots cache (see app/api/files/[...path]/route.ts)

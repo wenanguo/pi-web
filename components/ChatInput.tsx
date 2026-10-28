@@ -35,6 +35,7 @@ import { useFontPreferences } from "@/hooks/useFontPreferences";
 import type { ToolPreset } from "@/lib/tool-presets";
 import { SelectorRow } from "./SelectorRow";
 import { ModelSelector, type ModelSelectorOption } from "./ModelSelector";
+import { CustomAgentSelector } from "./CustomAgentSelector";
 
 export { filterModelOptions } from "./ModelSelector";
 
@@ -74,6 +75,10 @@ interface Props {
   compactResult?: CompactResultInfo | null;
   toolPreset?: ToolPreset;
   onToolPresetChange?: (preset: ToolPreset) => void;
+  /** The custom agent the session runs as; null means an ordinary session. */
+  customAgent?: string | null;
+  /** Absent when the session already runs: the agent of a session is fixed. */
+  onCustomAgentChange?: (agentId: string | null) => void;
   thinkingLevel?: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   /** New session has not committed a thinking level; the button still shows the resolved default. */
   isAutoThinkingSelection?: boolean;
@@ -665,6 +670,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   defaultModel, onSetDefaultModel,
   onCompact, onAbortCompaction, isCompacting, compactError, onDismissCompactError, compactResult, toolPreset, onToolPresetChange,
+  customAgent, onCustomAgentChange,
   thinkingLevel, isAutoThinkingSelection = false, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
   savedDefaultThinkingLevel, onSetDefaultThinkingLevel,
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
@@ -2645,12 +2651,20 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                 )}
               </div>
             )}
+            <CustomAgentSelector
+              value={customAgent ?? null}
+              onChange={onCustomAgentChange}
+              mobile={isMobile}
+              showLabel={controlsMenuOpen}
+            />
             {!isStreaming && onToolPresetChange && (
               <div ref={toolDropdownRef} style={{ position: "relative" }}>
                 <button
                   onClick={(e) => { if (!isStreaming && !isStrayClick(e)) setToolDropdownOpen((v) => !v); }}
-                  disabled={isStreaming}
-                  title={t("chat.changeToolPreset") + `: ${toolPresetLabel}`}
+                  disabled={isStreaming || Boolean(customAgent)}
+                  title={customAgent
+                    ? t("chat.customAgentOwnsTools")
+                    : t("chat.changeToolPreset") + `: ${toolPresetLabel}`}
                   aria-label={t("chat.changeToolPreset")}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 5,

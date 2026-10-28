@@ -23,6 +23,7 @@ import {
 } from "@/lib/session-view-cache";
 import { clearDraft, getDraft, rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
+import { getPreferredCustomAgent, setPreferredCustomAgent } from "@/lib/custom-agent-preference";
 import { CONFIGURED_TOOL_PRESET, getPresetFromToolNames, getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import { mergeSessionStats, type SessionFileStats } from "@/lib/session-stats";
@@ -67,6 +68,8 @@ export interface SessionData {
   tree: SessionTreeNode[];
   leafId: string | null;
   toolNames?: string[];
+  /** The custom agent the session runs as, when it runs one. */
+  customAgent?: string;
   /** Opaque freshness token for the session view cache (summary tree reads). */
   snapshotRevision?: string | null;
   /** "summary" when `tree` carries the body-free navigation format. */
@@ -394,6 +397,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [newSessionModel, setNewSessionModel] = useState<SelectedModel | null>(() => initialChoices?.model ?? null);
   const [newSessionDefaultModel, setNewSessionDefaultModel] = useState<SelectedModel | null>(null);
   const [toolPreset, setToolPreset] = useState<ToolPreset>(CONFIGURED_TOOL_PRESET);
+  // The custom agent a fresh composer starts as: null means an ordinary session.
+  const [customAgent, setCustomAgent] = useState<string | null>(null);
   const [newSessionThinkingLevel, setNewSessionThinkingLevel] = useState<ConcreteThinkingLevel | null>(() => initialChoices?.thinkingLevel ?? null);
   const [newSessionDefaultThinkingLevel, setNewSessionDefaultThinkingLevel] = useState<ConcreteThinkingLevel | null>(null);
   const [savedDefaultThinkingLevel, setSavedDefaultThinkingLevel] = useState<ConcreteThinkingLevel | null>(null);
@@ -479,6 +484,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const newSessionPromotedRef = useRef(false);
   const newSessionModelOverrideRef = useRef<SelectedModel | null>(initialChoices?.model ?? null);
   const thinkingLevelOverrideRef = useRef<ConcreteThinkingLevel | null>(initialChoices?.thinkingLevel ?? null);
+  // The custom agent a fresh composer starts as. A ref, so a session that is
+  // created later still reads the pick the composer had when it was sent.
+  const customAgentRef = useRef<string | null>(null);
   const thinkingLevelPinsRef = useRef<Record<string, string>>({});
   const defaultThinkingLevelRef = useRef<ConcreteThinkingLevel | null>(null);
   const promptRunIdRef = useRef(0);
@@ -535,6 +543,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   useLayoutEffect(() => {
     if (!existingSessionId && (!isNew || sessionIdRef.current)) return;
     setToolPresetState(getPreferredToolPreset());
+    const preferredCustomAgent = getPreferredCustomAgent();
+    customAgentRef.current = preferredCustomAgent;
+    setCustomAgent(preferredCustomAgent);
   }, [existingSessionId, isNew, setToolPresetState]);
 
   const onNewSessionChoicesChange = opts.onNewSessionChoicesChange;
@@ -772,6 +783,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // on every read, cached window or not (#700).
       sessionToolsPinnedRef.current = d.toolNames !== undefined;
       setToolPresetState(d.toolNames !== undefined ? getPresetFromToolNames(d.toolNames) : CONFIGURED_TOOL_PRESET);
+      // A session that runs a custom agent shows it: the agent belongs to the
+      // session, so the composer follows the session it has open.
+      if (d.customAgent !== undefined) {
+        customAgentRef.current = d.customAgent;
+        setCustomAgent(d.customAgent);
+      }
       setCurrentModelOverride((current) => modelSwitchPendingRef.current ? current : null);
       setCurrentThinkingOverride(null);
       setError(null);
@@ -940,6 +957,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // so pi resolves settings.json defaultTools instead of being pinned to ours (#700).
       const toolNames = getToolNamesForPreset(toolPreset);
       sessionToolsPinnedRef.current = toolNames !== undefined;
+      // The custom agent a fresh composer starts as. The agent's own tool list wins
+      // over the preset on the server, so the preset is not sent along with it.
+      const selectedCustomAgent = customAgentRef.current;
       const res = await fetch("/api/agent/new", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -951,6 +971,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           ...(selectedThinkingLevel
             ? { thinkingLevel: selectedThinkingLevel }
             : {}),
+          ...(selectedCustomAgent ? { customAgent: selectedCustomAgent } : {}),
         }),
       });
       if (!res.ok) {
@@ -2497,6 +2518,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     reloadModelsQuietly();
   }, [addNotice, displayThinkingLevel, handleThinkingLevelChange, reloadModelsQuietly, saveDefaultPreferences]);
 
+  /**
+   * The custom agent a fresh composer starts as. The pick belongs to the browser,
+   * so it is stored there; the session that runs the agent keeps it in its own file.
+   * A session that already runs cannot change its agent: its persona is part of it.
+   */
+  const handleCustomAgentChange = useCallback((agentId: string | null) => {
+    customAgentRef.current = agentId;
+    setCustomAgent(agentId);
+    setPreferredCustomAgent(agentId);
+  }, []);
+
   const handleToolPresetChange = useCallback(async (preset: ToolPreset) => {
     const toolNames = getToolNamesForPreset(preset);
     setPreferredToolPreset(preset);
@@ -2920,6 +2952,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     // State
     data, loading, error, activeLeafId, messages, activeToolResults, entryIds, messageKeys, historyCursor, hasEarlierMessages, earlierTurnCount, streamingStore,
     agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
+    customAgent,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats, autoCompactionEnabled,
     slashCommands, slashCommandsLoading, queuedMessages,
@@ -2947,7 +2980,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     cancelEdit: editEntryId ? cancelEdit : undefined,
     addNotice,
     setNoticePaused: setPausedNoticeId,
-    handleToolPresetChange, handleThinkingLevelChange, handleSetDefaultModel, handleSetDefaultThinkingLevel, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages, loadContext,
+    handleToolPresetChange, handleThinkingLevelChange, handleSetDefaultModel, handleSetDefaultThinkingLevel, handleCustomAgentChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages, loadContext,
     scrollToBottom, scrollUserMsgToTop, scrollToMessage,
     dispatch, setAgentRunning, setForkingEntryId,
     bashRunning, pendingBash,

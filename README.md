@@ -192,6 +192,7 @@ Contributor guides: [Internationalization](./docs/i18n.md) and [Release process]
 ```text
 app/             Next.js UI and API routes
 components/      React UI components
+custom-agent/    This fork's custom agents: personas (Markdown) and capabilities (pi extensions)
 hooks/           Client state and interaction hooks
 lib/             Session, agent, model, file, Git, and security logic
 public/          Static assets and PWA files
@@ -199,6 +200,19 @@ bin/             npm CLI entrypoint and launch option parsing
 docs/            Focused user and contributor guides
 demo/            Static browser demo published to GitHub Pages (see demo/README.md)
 ```
+
+## Custom agents (this fork)
+
+A **custom agent** is a role that ships with the repository: a persona (a Markdown file
+under `custom-agent/agents/`) plus the capabilities it may use (pi extensions under
+`custom-agent/extensions/`). Pick one in a fresh composer and the session runs as that
+role: its persona is sent with every run, its tool list is exactly what it names, and its
+model and reasoning level are the defaults.
+
+The session keeps its agent, so a session that is opened later is still the same role.
+
+See [Custom agents](./docs/custom-agents.md) for the definition format, how to write a
+capability extension, and the `PI_WEB_CUSTOM_AGENT_DIR` setting.
 
 See [AGENTS.md](./AGENTS.md) for the architecture notes and detailed file map.
 

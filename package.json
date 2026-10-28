@@ -26,6 +26,7 @@
   },
   "files": [
     "bin",
+    "custom-agent",
     ".next",
     "!.next/cache",
     "!.next/dev",
@@ -64,6 +65,7 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "semver": "7.8.5",
+    "typebox": "1.3.27",
     "undici": "8.11.0",
     "web-push": "^3.6.7"
   },

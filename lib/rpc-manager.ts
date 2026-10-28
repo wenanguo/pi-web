@@ -63,6 +63,9 @@ import {
   readSessionToolSelection,
   validateSessionToolSelection,
 } from "./session-tool-selection";
+import { resolveCustomAgent, customAgentExtensionPaths } from "./custom-agents";
+import { appendSessionCustomAgent, readSessionCustomAgent } from "./custom-agent-selection";
+import { createCustomAgentExtension } from "./custom-agent-extension";
 
 // ============================================================================
 // Types
@@ -227,6 +230,8 @@ export interface RpcSessionStartOptions {
   initialModel?: { provider: string; modelId: string };
   allowInitialModelFallback?: boolean;
   thinkingLevel?: ThinkingLevel;
+  /** The custom agent a new session starts as: its persona, its model and its tools. */
+  customAgent?: string;
 }
 
 const CODING_TOOL_NAMES = ["read", "bash", "powershell", "edit", "write", "grep", "find", "ls"];
@@ -2502,7 +2507,21 @@ export async function startRpcSession(
   const persistedToolNames = subagentResources
     ? undefined
     : readSessionToolSelection(sessionEntries);
-  const selectedToolNames = subagentResources?.tools ?? persistedToolNames ?? requestedToolNames;
+  // A custom agent belongs to the session, not to the browser that started it: the
+  // session file carries it, so a session that is opened later keeps its persona.
+  const persistedCustomAgent = subagentResources ? undefined : readSessionCustomAgent(sessionEntries);
+  const requestedCustomAgent = options.customAgent?.trim() || undefined;
+  const customAgentId = persistedCustomAgent ?? requestedCustomAgent;
+  const customAgent = customAgentId ? resolveCustomAgent(customAgentId) : undefined;
+  if (!persistedCustomAgent && requestedCustomAgent && !customAgent) {
+    throw new Error(`Unknown custom agent: ${requestedCustomAgent}`);
+  }
+  if (!persistedCustomAgent && customAgent) {
+    appendSessionCustomAgent(sessionManager, customAgent.id);
+  }
+  // The agent's own tool list wins over the browser's preset: an agent's tool
+  // surface is part of what it is.
+  const selectedToolNames = subagentResources?.tools ?? customAgent?.tools ?? persistedToolNames ?? requestedToolNames;
   if (!subagentResources && persistedToolNames === undefined && requestedToolNames !== undefined) {
     appendSessionToolSelection(sessionManager, requestedToolNames);
   }
@@ -2549,6 +2568,15 @@ export async function startRpcSession(
     // after the session is created, so the getter is filled in below.
     const exactSystemPromptRef: { current?: () => string } = {};
     const exactSystemPromptExtension = createExactSystemPromptExtension(() => exactSystemPromptRef.current?.());
+    // The persona of the session's custom agent, sent with every run of it, and
+    // the tool list that goes with it.
+    const customAgentExtension = createCustomAgentExtension({
+      getPrompt: () => customAgent?.prompt,
+      getTools: () => customAgent?.tools,
+    });
+    // The fork's capability extensions: a session that runs a custom agent loads
+    // them, so an ordinary session keeps exactly the loadout it had.
+    const customAgentExtensions = customAgent ? customAgentExtensionPaths() : [];
     // codemode, tool-search, and mcp, as the pi CLI loads them, and the host that decides
     // which MCP servers the session connects (ADR 0006).
     const builtins = subagentResources || chatOnly
@@ -2603,7 +2631,10 @@ export async function startRpcSession(
             appendSystemPrompt: subagentResources.appendSystemPrompt,
           }
         : chatOnly
-          ? { ...CHAT_ONLY_RESOURCE_LOADER_OPTIONS, extensionFactories: [exactSystemPromptExtension] }
+          ? {
+              ...CHAT_ONLY_RESOURCE_LOADER_OPTIONS,
+              extensionFactories: [exactSystemPromptExtension, customAgentExtension],
+            }
         : {
             extensionFactories: [
               ...(builtins?.extensions ?? []),
@@ -2617,7 +2648,11 @@ export async function startRpcSession(
                 () => listSubagentProfiles(sessionCwd),
                 isBuiltInSubagentsEnabled,
               ),
+              customAgentExtension,
             ],
+            // The fork's capability extensions: loaded for a session that runs a
+            // custom agent, so an ordinary session is exactly what it was.
+            ...(customAgentExtensions.length > 0 ? { additionalExtensionPaths: customAgentExtensions } : {}),
             extensionsOverride: (base) => preferUserBashExtension(preferPiWebSubagentExtension(base)),
           },
       ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
@@ -2724,7 +2759,15 @@ export async function startRpcSession(
     if (!subagentResources && !chatOnly) {
       const initialToolNames = inner.getActiveToolNames();
       inner.setActiveToolsByName(
-        resolveActiveToolNames(inner, selectedToolNames ?? initialToolNames, initialToolNames),
+        customAgent?.tools
+          // An agent's tool list is exact: a tool it does not name is off, including
+          // a capability extension it did not ask for. resolveActiveToolNames keeps
+          // every other active tool, which is right for a preset and wrong here.
+          ? customAgent.tools.filter((name) => {
+            const tool = inner.getAllTools().find((entry) => entry.name === name);
+            return tool !== undefined && tool.exposure !== "hidden";
+          })
+          : resolveActiveToolNames(inner, selectedToolNames ?? initialToolNames, initialToolNames),
       );
     }
 

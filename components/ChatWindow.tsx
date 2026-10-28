@@ -278,7 +278,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   const {
     loading, error, messages, activeToolResults, entryIds, messageKeys, historyCursor, hasEarlierMessages, earlierTurnCount, streamingStore,
-    agentRunning, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
+    agentRunning, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel, customAgent,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
@@ -298,7 +298,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     dismissCompactError,
     handleRecallQueue,
     handleBuiltinSlashCommand,
-    handleToolPresetChange, handleThinkingLevelChange, handleSetDefaultModel, handleSetDefaultThinkingLevel, loadSlashCommands, scrollUserMsgToTop,
+    handleToolPresetChange, handleThinkingLevelChange, handleSetDefaultModel, handleSetDefaultThinkingLevel, handleCustomAgentChange, loadSlashCommands, scrollUserMsgToTop,
     loadContext, activeLeafId, scrollToBottom, scrollToMessage,
   } = useAgentSession({
     session, sessionRunning, newSessionCwd, newSessionDraftKey, initialNewSessionChoices, onNewSessionChoicesChange, onAgentEnd: wrappedOnAgentEnd, onToolEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
@@ -977,6 +977,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       compactResult={compactResult}
       toolPreset={toolPreset}
       onToolPresetChange={session || isNew ? handleToolPresetChange : undefined}
+      customAgent={customAgent ?? null}
+      // The agent of a session is fixed: only a fresh composer picks one.
+      onCustomAgentChange={isNew ? handleCustomAgentChange : undefined}
       thinkingLevel={thinkingLevel}
       isAutoThinkingSelection={isAutoThinkingSelection}
       onThinkingLevelChange={session || isNew ? handleThinkingLevelChange : undefined}

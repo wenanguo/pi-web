@@ -18,6 +18,7 @@ import { computeSessionRevision } from "@/lib/session-revision";
 import type { SessionEntry } from "@/lib/types";
 import { readSubagentRun, readSubagentSessionResources } from "@/lib/subagents";
 import { readSessionToolSelection } from "@/lib/session-tool-selection";
+import { readSessionCustomAgent } from "@/lib/custom-agent-selection";
 import { jsonResponse } from "@/lib/json-response";
 import { deleteSessions } from "@/lib/session-delete";
 import { attachTranscriptNotices, readSessionTranscriptNotices } from "@/lib/transcript-notices-server";
@@ -112,6 +113,9 @@ export async function GET(
       : null;
     const toolNames = readSubagentSessionResources(entries as never)?.tools
       ?? readSessionToolSelection(entries as never);
+    // The custom agent the session runs as: it is part of the session's identity,
+    // so a session that is opened later shows the agent it was started with.
+    const customAgent = readSessionCustomAgent(entries as never);
     const info = header ? (await attachSessionProjectInfo([{
       path: filePath,
       id: header.id,
@@ -149,6 +153,7 @@ export async function GET(
         stats,
         totalActiveMs,
         ...(toolNames !== undefined ? { toolNames } : {}),
+        ...(customAgent !== undefined ? { customAgent } : {}),
         ...(wrapperRebuilt ? { wrapperRebuilt: true } : {}),
       },
     )) ?? jsonResponse(
@@ -165,6 +170,7 @@ export async function GET(
         stats,
         totalActiveMs,
         ...(toolNames !== undefined ? { toolNames } : {}),
+        ...(customAgent !== undefined ? { customAgent } : {}),
         ...(wrapperRebuilt ? { wrapperRebuilt: true } : {}),
       },
     );
