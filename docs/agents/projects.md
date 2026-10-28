@@ -6,10 +6,12 @@
 
 | 位置 | 作用 |
 | --- | --- |
-| `lib/project-roadmaps-shared.ts` | 类型、校验、进度计算（浏览器与服务端共用）。 |
-| `lib/project-roadmaps.ts` | `pi-web-projects.json` 的读写：加锁、原子写、损坏文件备份。 |
+| `lib/project-roadmaps-shared.ts` | 类型、校验、进度计算、**变更操作**（浏览器与服务端共用）。 |
+| `lib/project-roadmaps.ts` | `pi-web-projects.json` 的读写：加锁、原子写、损坏文件备份、**在锁内应用变更**。 |
+| `lib/project-roadmaps-registry.ts` | 把计划交给扩展的全局注册表（扩展不能 import 应用的模块）。 |
 | `app/api/projects/route.ts` | `GET` 项目与计划；`PUT` 写一个项目的计划；`DELETE` 忘掉一个项目的计划。 |
 | `components/ProjectsPanel.tsx` | 面板：项目切换、里程碑卡片、任务行。 |
+| `custom-agent/extensions/project-plan/` | 计划工具（读/加里程碑/加任务/改任务），走注册表。 |
 | `docs/projects.md` | 使用说明。 |
 
 ## 项目从哪来
@@ -69,6 +71,29 @@
 仍进输入框，可以改完再发。指令是界面文案，在 i18n 里。
 
 任务标题本身是输入框（要能改名），所以点标题是编辑，不是带入对话。
+
+## agent 写回：变更是操作，不是整份计划
+
+pi 会把一条消息里的多个工具调用**并行**执行。模型一次发三个 `add_task`，三个调用各自
+「读整份计划 → 加一个任务 → 写回整份」时，后写的会覆盖先写的：三个子任务只活下来一个
+（实测过）。
+
+所以计划工具发的是**操作**（`ProjectRoadmapOperation`：`add-milestone` / `add-task` /
+`update-task` / `delete-task`），不是整份计划。`applyProjectRoadmapOperation()` 在锁内
+读**当时磁盘上的那份**计划、应用一个操作、写回：三次并行不会丢。单元测试
+「changes made at the same time do not lose each other」钉住这一点。
+
+操作里的状态、优先级走和校验同一套规则（`taskStatusOf()` 等）：不认识的 `doing` 退回
+`todo`，不认识的优先级丢掉。
+
+## 扩展怎么拿到计划
+
+扩展不能 import 应用的模块（它在 pi CLI 里也得能用），所以应用通过
+`globalThis[Symbol.for("pi-web/project-roadmaps/v1")]` 把计划交出去
+（`lib/project-roadmaps-registry.ts`，在 `instrumentation-node.ts` 里装上）。注册表不在
+时，工具说「计划只在 Pi Web 里可用」，不抛异常。
+
+注册表带版本：接口变了就换版本号，旧的扩展看到不认识的版本就不碰。
 
 ## 边界
 

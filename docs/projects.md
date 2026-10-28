@@ -80,9 +80,25 @@
 
 **项目目录里一个字节都不会写** —— 计划和代码分开，代码归 git 管，计划归这个文件管。
 
-## 和 agent 一起用
+## agent 也能读写计划
 
-这个面板只管给人看。agent 要读写计划，走 API：
+这个面板只管给人看。agent 要读写计划，走**计划工具**（`custom-agent/extensions/project-plan/`）：
+`project_plan_read` 读当前会话所属项目的计划，`project_plan_add_task` / `add_milestone` /
+`update_task` 写回。配套的角色是**项目经理助理**（`custom-agent/agents/project-pm.md`）。
+
+于是有了这个闭环：
+
+```
+面板里点任务 → 任务进对话框 → LLM 拆成子任务 → 写回计划 → 面板里出现子任务
+```
+
+实测：让助理把一个任务拆成 3 个子任务，3 个子任务都进了计划文件（带负责人、截止日、
+优先级），面板进度同步变成 1/5。
+
+> 计划工具走全局注册表（`globalThis[Symbol.for("pi-web/project-roadmaps/v1")]`），
+> 因为扩展不能 import 应用的模块。注册表不在（pi CLI 里）时，工具会说明计划不可用。
+
+agent 也能直接调 API：
 
 ```bash
 # 读某个项目的计划
@@ -93,6 +109,3 @@ curl -X PUT http://127.0.0.1:30141/api/projects \
   -H "Content-Type: application/json" \
   -d '{"projectKey":"d:\\project\\pi-web","roadmap":{"projectKey":"d:\\project\\pi-web","milestones":[]}}'
 ```
-
-一个定制 agent 想要「读当前项目的里程碑并汇报进度」，可以直接调这个 API，或者让
-agent 用 `read` 读 `~/.pi/agent/pi-web-projects.json`（路径在 agent 的提示词里给出来）。

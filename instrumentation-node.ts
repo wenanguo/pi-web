@@ -1,5 +1,6 @@
 import { configureHttpDispatcher, readHttpIdleTimeoutMs } from "@/lib/http-dispatcher";
 import { closeAllAgentEventStreams } from "@/lib/agent-event-stream";
+import { installProjectRoadmapsRegistry } from "@/lib/project-roadmaps-registry";
 
 export function registerNodeInstrumentation(): void {
   // The pi CLI applies settings' `httpIdleTimeoutMs` to the same undici
@@ -7,6 +8,10 @@ export function registerNodeInstrumentation(): void {
   // configured. Without it the built-in five minutes aborts a provider stream
   // that stays quiet for longer, which a CLI session tolerates.
   configureHttpDispatcher(readHttpIdleTimeoutMs());
+
+  // The projects' plans, published for the extensions: an extension cannot
+  // import this app's modules, so it reaches them through this registry.
+  installProjectRoadmapsRegistry();
 
   // In production Next 16 answers SIGINT/SIGTERM with server.close() and waits
   // for every connection to end, without a timeout. SSE streams only end when

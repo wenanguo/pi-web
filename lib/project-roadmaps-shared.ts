@@ -81,6 +81,21 @@ function priorityValue(value: unknown): TaskPriority | undefined {
   return TASK_PRIORITIES.includes(value as TaskPriority) ? (value as TaskPriority) : undefined;
 }
 
+/** A task's state, from whatever was sent: an unknown state is a task to do. */
+export function taskStatusOf(value: unknown): TaskStatus {
+  return taskStatus(value);
+}
+
+/** A milestone's state, from whatever was sent: an unknown state is not started. */
+export function milestoneStatusOf(value: unknown): MilestoneStatus {
+  return milestoneStatus(value);
+}
+
+/** A task's priority, from whatever was sent: an unknown priority is none. */
+export function taskPriorityOf(value: unknown): TaskPriority | undefined {
+  return priorityValue(value);
+}
+
 /**
  * A task, or undefined when it is not one. A task without a title is not a task:
  * it would show as an empty row.
@@ -182,6 +197,43 @@ export function newItemId(prefix: string): string {
     ? crypto.randomUUID().slice(0, 8)
     : Math.random().toString(36).slice(2, 10);
   return `${prefix}-${random}`;
+}
+
+/**
+ * A change to a plan, applied to the plan as it is when it is applied.
+ *
+ * The model sends an operation and not a whole plan: the model may send several
+ * operations at once (pi runs the tool calls of one message in parallel), and
+ * three of them replacing the plan would lose two of the changes. An operation
+ * is applied to the plan that is on disk at that moment, under the lock.
+ */
+export type ProjectRoadmapOperation =
+  | { kind: "add-milestone"; title: string; status?: string; due?: string }
+  | {
+    kind: "add-task";
+    milestone: string;
+    title: string;
+    status?: string;
+    assignee?: string;
+    due?: string;
+    priority?: string;
+  }
+  | {
+    kind: "update-task";
+    id: string;
+    status?: string;
+    title?: string;
+    assignee?: string;
+    due?: string;
+    priority?: string;
+  }
+  | { kind: "delete-task"; id: string };
+
+export interface ProjectRoadmapOperationResult {
+  ok: boolean;
+  /** What the operation did, in a sentence for the model. */
+  message: string;
+  roadmap: ProjectRoadmap;
 }
 
 /** What the composer receives when a task is opened in the chat. */

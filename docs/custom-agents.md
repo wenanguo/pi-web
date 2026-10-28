@@ -24,6 +24,8 @@ Markdown 提交上去就行。
 | --- | --- |
 | `custom-agent/agents/risk-officer.md` | **项目风控官**：只读审计、产出分级风险清单的完整角色（定级标准、固定卡片格式、硬规矩）。 |
 | `custom-agent/extensions/risk-scanner/index.ts` | 配套能力：`risk_scan` 工具，扫硬编码凭据、未锁定依赖版本、遗留调试语句、TODO/FIXME、大文件。 |
+| `custom-agent/agents/project-pm.md` | **项目经理助理**：读项目的计划，拆任务、改状态，**把产出写回计划**。 |
+| `custom-agent/extensions/project-plan/index.ts` | 配套能力：`project_plan_read` / `add_milestone` / `add_task` / `update_task` 四个计划工具。 |
 | `custom-agent/agents/example-analyst.md` | 最小人格模板：frontmatter + 一段做事方式。 |
 
 `risk_scan` 的参数：
@@ -35,6 +37,23 @@ Markdown 提交上去就行。
 
 风控官的人格要求**按用户问的范围选 `kinds`**：问依赖版本就只传 `["dependency"]`，
 这样扫描结果不会把其它类型的噪音一起端上来。
+
+## 能力扩展怎么拿到应用的数据
+
+扩展在 Pi Web 的进程里跑，但它**不能 import 这个应用的模块**（扩展在 pi CLI 里也得能用）。
+所以应用把需要的东西通过一个全局注册表交出来：
+
+```typescript
+const registry = globalThis[Symbol.for("pi-web/project-roadmaps/v1")];
+```
+
+`custom-agent/extensions/project-plan/` 就是这么拿到项目计划的（读当前会话所属项目的
+计划，改它）。注册表不在（比如在 pi CLI 里）时，工具会说「计划只在 Pi Web 里可用」，
+而不是抛异常。
+
+扩展要写应用自己的文件时，**发一个操作**（add-task、update-task……），别发整份计划：
+pi 会把一条消息里的多个工具调用**并行**执行，三次「读整份、改整份、写整份」会互相覆盖。
+操作是在锁内应用到「当时磁盘上的那份计划」上的，三次并行不会丢。
 
 ---
 
