@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import {
   emptyRoadmap,
+  formatTaskContext,
   milestoneProgress,
   newItemId,
   roadmapProgress,
@@ -11,6 +12,7 @@ import {
   type ProjectMilestone,
   type ProjectRoadmap,
   type ProjectTask,
+  type TaskContextLabels,
   type TaskPriority,
   type TaskStatus,
 } from "@/lib/project-roadmaps-shared";
@@ -25,6 +27,8 @@ interface ProjectSummary {
 interface Props {
   /** The cwd the shell has open; the project it belongs to is shown first. */
   initialCwd?: string | null;
+  /** Opens a task in the chat: the composer gets the task, ready to be worked on. */
+  onOpenTask?: (context: { text: string; projectKey: string }) => void;
 }
 
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -55,7 +59,7 @@ function pickInitialProject(projects: ProjectSummary[], cwd: string | null | und
  * here and kept by the server (`pi-web-projects.json`), so it survives a reload
  * and is the same for every window.
  */
-export function ProjectsPanel({ initialCwd }: Props) {
+export function ProjectsPanel({ initialCwd, onOpenTask }: Props) {
   const { t } = useI18n();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [roadmaps, setRoadmaps] = useState<Record<string, ProjectRoadmap>>({});
@@ -149,6 +153,8 @@ export function ProjectsPanel({ initialCwd }: Props) {
             project={activeProject}
             roadmap={activeRoadmap}
             collapsed={collapsed}
+            sessionCwd={initialCwd}
+            onOpenTask={onOpenTask}
             onToggle={(id) => setCollapsed((current) => ({ ...current, [id]: !current[id] }))}
             onEdit={(change) => edit(activeProject.key, change)}
           />
@@ -212,21 +218,68 @@ function ProjectList({
   );
 }
 
+/**
+ * The words a task's context is written with, in the interface's language.
+ */
+function useTaskContextLabels(): TaskContextLabels {
+  const { t } = useI18n();
+  return {
+    task: t("projects.taskLabel"),
+    project: t("projects.projectLabel"),
+    milestone: t("projects.milestoneLabel"),
+    status: t("projects.statusLabel"),
+    owner: t("projects.assignee"),
+    due: t("projects.dueLabel"),
+    priority: t("projects.priority"),
+    sessionDirectory: t("projects.sessionDirectory"),
+    statusValues: {
+      todo: t("projects.taskTodo"),
+      doing: t("projects.taskDoing"),
+      done: t("projects.statusDone"),
+      blocked: t("projects.statusBlocked"),
+    },
+    priorityValues: {
+      high: t("projects.priorityHigh"),
+      medium: t("projects.priorityMedium"),
+      low: t("projects.priorityLow"),
+    },
+  };
+}
+
 function ProjectDetail({
   project,
   roadmap,
   collapsed,
+  sessionCwd,
+  onOpenTask,
   onToggle,
   onEdit,
 }: {
   project: ProjectSummary;
   roadmap: ProjectRoadmap;
   collapsed: Record<string, boolean>;
+  sessionCwd?: string | null;
+  onOpenTask?: (context: { text: string; projectKey: string }) => void;
   onToggle: (id: string) => void;
   onEdit: (change: (roadmap: ProjectRoadmap) => ProjectRoadmap) => void;
 }) {
   const { t } = useI18n();
   const progress = roadmapProgress(roadmap);
+  const labels = useTaskContextLabels();
+
+  /** The task, written for the composer: what it is, and where it stands. */
+  const openTask = (milestone: ProjectMilestone, task: ProjectTask, prompt?: string) => {
+    onOpenTask?.({
+      text: formatTaskContext({
+        projectName: project.name,
+        projectRoot: project.root,
+        milestone: { title: milestone.title },
+        task,
+        sessionCwd,
+      }, labels) + (prompt ? prompt : ""),
+      projectKey: project.key,
+    });
+  };
 
   const addMilestone = () => {
     const milestone: ProjectMilestone = {
@@ -272,6 +325,8 @@ function ProjectDetail({
           onToggle={() => onToggle(milestone.id)}
           onChange={(change) => changeMilestone(milestone.id, change)}
           onRemove={() => removeMilestone(milestone.id)}
+          onOpenTask={(task) => openTask(milestone, task)}
+          onOpenTaskWithPrompt={(task, prompt) => openTask(milestone, task, prompt)}
         />
       ))}
 
@@ -298,12 +353,16 @@ function MilestoneCard({
   onToggle,
   onChange,
   onRemove,
+  onOpenTask,
+  onOpenTaskWithPrompt,
 }: {
   milestone: ProjectMilestone;
   collapsed: boolean;
   onToggle: () => void;
   onChange: (change: (milestone: ProjectMilestone) => ProjectMilestone) => void;
   onRemove: () => void;
+  onOpenTask: (task: ProjectTask) => void;
+  onOpenTaskWithPrompt: (task: ProjectTask, prompt: string) => void;
 }) {
   const { t } = useI18n();
   const progress = milestoneProgress(milestone);
@@ -404,6 +463,8 @@ function MilestoneCard({
               task={task}
               onChange={(change) => changeTask(task.id, change)}
               onRemove={() => removeTask(task.id)}
+              onOpen={() => onOpenTask(task)}
+              onOpenWithPrompt={(prompt) => onOpenTaskWithPrompt(task, prompt)}
             />
           ))}
           <button
@@ -429,10 +490,16 @@ function TaskRow({
   task,
   onChange,
   onRemove,
+  onOpen,
+  onOpenWithPrompt,
 }: {
   task: ProjectTask;
   onChange: (change: (task: ProjectTask) => ProjectTask) => void;
   onRemove: () => void;
+  /** Puts the task into the chat, so the model can work on it. */
+  onOpen: () => void;
+  /** Puts the task into the chat with an instruction ready to send. */
+  onOpenWithPrompt: (prompt: string) => void;
 }) {
   const { t } = useI18n();
   const isDone = task.status === "done";
@@ -514,6 +581,16 @@ function TaskRow({
           return next;
         })}
       />
+      <IconButton label={t("projects.openInChat")} onClick={onOpen}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+        </svg>
+      </IconButton>
+      <QuickActionsMenu label={t("projects.quickActions")} actions={[
+        { label: t("projects.actionExpand"), prompt: t("projects.actionExpandPrompt") },
+        { label: t("projects.actionSummarize"), prompt: t("projects.actionSummarizePrompt") },
+        { label: t("projects.actionBreakdown"), prompt: t("projects.actionBreakdownPrompt") },
+      ]} onPick={(prompt) => onOpenWithPrompt(prompt)} />
       <IconButton label={t("projects.removeTask")} onClick={onRemove}>×</IconButton>
     </div>
   );
@@ -574,8 +651,7 @@ function PrioritySelect({
   );
 }
 
-function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
-  return (
+function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {  return (
     <button
       onClick={onClick}
       title={label}
@@ -591,6 +667,90 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * A small menu of ready-made instructions: each one puts the task and the
+ * instruction into the composer, ready to be edited before it is sent.
+ */
+function QuickActionsMenu({
+  label,
+  actions,
+  onPick,
+}: {
+  label: string;
+  actions: { label: string; prompt: string }[];
+  onPick: (prompt: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} style={{ position: "relative", flexShrink: 0 }}>
+      <button
+        onClick={() => setOpen((current) => !current)}
+        title={label}
+        aria-label={label}
+        aria-expanded={open}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          width: 18, height: 20, padding: 0,
+          background: "none", border: "none", color: "var(--text-dim)",
+          cursor: "pointer", fontSize: 10, lineHeight: 1,
+        }}
+        onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
+        onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-dim)"; }}
+      >
+        ▾
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute", top: "100%", right: 0, zIndex: 120,
+            minWidth: 150, padding: 3,
+            background: "var(--bg)", border: "1px solid var(--border)",
+            borderRadius: 7, boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+          }}
+        >
+          {actions.map((action) => (
+            <button
+              key={action.label}
+              onClick={() => {
+                setOpen(false);
+                onPick(action.prompt);
+              }}
+              style={{
+                display: "block", width: "100%", padding: "6px 9px",
+                background: "none", border: "none", borderRadius: 5,
+                color: "var(--text-muted)", cursor: "pointer", fontSize: 12, textAlign: "left",
+                whiteSpace: "nowrap",
+              }}
+              onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; event.currentTarget.style.color = "var(--text)"; }}
+              onMouseLeave={(event) => { event.currentTarget.style.background = "none"; event.currentTarget.style.color = "var(--text-muted)"; }}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

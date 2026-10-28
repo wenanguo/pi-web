@@ -311,6 +311,18 @@ export function AppShell() {
     reclampRightPanelWidth();
   }, [reclampRightPanelWidth, reclampSidebarWidth, rightPanelOpen]);
   const chatInputRef = useRef<ChatInputHandle | null>(null);
+
+  /**
+   * A task opened in the chat: the composer gets the task (which project and
+   * milestone it belongs to, where it stands) and the caret, so the instruction
+   * that follows is the user's own.
+   */
+  const handleOpenTaskInChat = useCallback((context: { text: string }) => {
+    const input = chatInputRef.current;
+    if (!input) return;
+    input.insertText(context.text);
+    input.focus();
+  }, []);
   const [pendingQuotePrompt, setPendingQuotePrompt] = useState<{ sessionId: string; text: string } | null>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
   const mobileToolbarRef = useRef<HTMLDivElement>(null);
@@ -2749,7 +2761,7 @@ export function AppShell() {
         {/* Only the active viewer is mounted. Lightweight per-tab state is restored on activation. */}
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", paddingBottom: "env(safe-area-inset-bottom)" }}>
           {activeFileTabId === PROJECTS_TAB_ID ? (
-            <ProjectsPanel initialCwd={activeCwd} />
+            <ProjectsPanel initialCwd={activeCwd} onOpenTask={handleOpenTaskInChat} />
           ) : activeFileTab?.filePath ? (
             <FileViewer
               key={`${fileWorkspaceGeneration}:${activeFileTab.id}:${activeFileTab.viewerRevision ?? 0}`}

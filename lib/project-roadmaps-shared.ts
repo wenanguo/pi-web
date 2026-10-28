@@ -183,3 +183,58 @@ export function newItemId(prefix: string): string {
     : Math.random().toString(36).slice(2, 10);
   return `${prefix}-${random}`;
 }
+
+/** What the composer receives when a task is opened in the chat. */
+export interface TaskContextInput {
+  projectName: string;
+  projectRoot: string;
+  milestone?: { title: string };
+  task: { title: string; status: string; assignee?: string; due?: string; priority?: string };
+  /** The directory the chat is in, when it is not the task's project. */
+  sessionCwd?: string | null;
+}
+
+/** The words the context is written with: the interface's language. */
+export interface TaskContextLabels {
+  task: string;
+  project: string;
+  milestone: string;
+  status: string;
+  owner: string;
+  due: string;
+  priority: string;
+  sessionDirectory: string;
+  /** How a status reads, by its own value. */
+  statusValues?: Record<string, string>;
+  priorityValues?: Record<string, string>;
+}
+
+/**
+ * The task, written for the model: which task it is, which project and milestone
+ * it belongs to, and where it stands. The user's own instruction follows it in
+ * the composer, so the text leaves a blank line at the end.
+ *
+ * The session's directory is named when it is another one: the model works in
+ * that directory, and a task from somewhere else has to say so.
+ */
+export function formatTaskContext(input: TaskContextInput, labels: TaskContextLabels): string {
+  const lines: string[] = [];
+  lines.push(`${labels.task}: ${input.task.title}`);
+  lines.push(`${labels.project}: ${input.projectName} (${input.projectRoot})`);
+  if (input.milestone) lines.push(`${labels.milestone}: ${input.milestone.title}`);
+  const facts = [`${labels.status}: ${labels.statusValues?.[input.task.status] ?? input.task.status}`];
+  if (input.task.assignee) facts.push(`${labels.owner}: ${input.task.assignee}`);
+  if (input.task.due) facts.push(`${labels.due}: ${input.task.due}`);
+  if (input.task.priority) facts.push(`${labels.priority}: ${labels.priorityValues?.[input.task.priority] ?? input.task.priority}`);
+  lines.push(facts.join(" | "));
+  if (input.sessionCwd && !samePath(input.sessionCwd, input.projectRoot)) {
+    lines.push(`${labels.sessionDirectory}: ${input.sessionCwd}`);
+  }
+  return `${lines.join("\n")}\n\n`;
+}
+
+/** Two paths are the same one when they say the same, Windows paths without case. */
+function samePath(left: string, right: string): boolean {
+  const normalize = (path: string) => path.replace(/[\\/]+$/, "").toLowerCase();
+  return normalize(left) === normalize(right);
+}
